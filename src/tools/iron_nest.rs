@@ -26,17 +26,29 @@ impl Cell {
     }
 }
 
+fn speed_for_charge(n: u32) -> f64 {
+    let u = (n as f64 - 1.0) / 5.0;
+    let smooth = 3.0 * u * u - 2.0 * u * u * u;
+    0.7 * (0.3 + 0.7 * smooth)
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Elevations {
     km: f64,
     elevations: [f64; 6],
+    times: [f64; 6],
 }
 
 impl Elevations {
     fn from_km(km: f64) -> Self {
         let m = km * 1000.0;
         let elevations = CHARGES.map(|n| m * FACTOR / n as f64);
-        Self { km, elevations }
+        let times = CHARGES.map(|n| km / speed_for_charge(n));
+        Self {
+            km,
+            elevations,
+            times,
+        }
     }
 }
 
@@ -89,6 +101,7 @@ impl GameTool for IronNest {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui) {
+        // --- STATUS / INPUT LINE ---
         match &self.mode {
             Mode::Idle => {
                 ui.horizontal(|ui| {
@@ -121,6 +134,7 @@ impl GameTool for IronNest {
 
         ui.separator();
 
+        // --- RESULTS ---
         let Some(res) = self.result else {
             ui.weak("No result yet.");
             return;
@@ -140,7 +154,12 @@ impl GameTool for IronNest {
             .min_col_width(col_w)
             .max_col_width(col_w)
             .show(ui, |ui| {
-                for (i, (n, elev)) in CHARGES.iter().zip(res.elevations).enumerate() {
+                for (i, ((n, elev), time)) in CHARGES
+                    .iter()
+                    .zip(res.elevations)
+                    .zip(res.times)
+                    .enumerate()
+                {
                     egui::Frame::group(ui.style())
                         .inner_margin(egui::Margin::symmetric(8, 6))
                         .show(ui, |ui| {
@@ -161,6 +180,7 @@ impl GameTool for IronNest {
                                         .color(egui::Color32::from_rgb(230, 80, 80)),
                                 };
                                 ui.label(text);
+                                ui.weak(format!("⏱ {time:.2} s"));
                             });
                         });
                     if i % 3 == 2 {
