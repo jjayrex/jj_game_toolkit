@@ -5,6 +5,7 @@ mod tools;
 
 use eframe::egui;
 use tools::{GameTool, REGISTRY};
+use std::sync::atomic::Ordering;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -31,6 +32,7 @@ enum Screen {
 struct App {
     screen: Screen,
     always_on_top: bool,
+    input: input::InputHandle
 }
 
 impl App {
@@ -39,6 +41,7 @@ impl App {
         Self {
             screen: Screen::Launcher,
             always_on_top: true,
+            input: input::start(cc.egui_ctx.clone())
         }
     }
 
@@ -100,11 +103,25 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
         if self.top_bar(ui) || escape {
             self.screen = Screen::Launcher;
         }
+
+        let capture = match &mut self.screen {
+            Screen::Tool(tool) => {
+                while let Ok(ev) = self.input.rx.try_recv() {
+                    tool.handle_key(ev);
+                }
+                tool.wants_capture()
+            }
+            Screen::Launcher => {
+                while self.input.rx.try_recv().is_ok() {}
+                false
+            }
+        };
+        self.input.capture.store(capture, Ordering::Relaxed);
 
         let mut picked = None;
         egui::CentralPanel::default().show(ui, |ui| match &mut self.screen {
